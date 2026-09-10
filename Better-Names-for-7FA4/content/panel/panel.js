@@ -504,10 +504,10 @@
     // top-level UI (#bn-container and friends use 2147483647). Site chrome (top nav /
     // "学习" sidebar) can be created and re-layered asynchronously; a fixed z-index of
     // 9999 left it buried under that chrome on some refresh orders. We pin the layer at
-    // 2147483646 (one notch below the extension UI) and self-heal it so it stays above
-    // page chrome no matter when or how the page restacks itself.
+    // 2147483645, below floating plan tools (2147483646) and top-level extension UI
+    // (2147483647), and self-heal it so it stays above page chrome when the page restacks.
     const BN_BG_LAYER_ID = 'bn-background-image';
-    const BN_BG_LAYER_Z = '2147483646';
+    const BN_BG_LAYER_Z = '2147483645';
 
     let bgOverlayState = null;       // latest applied background config {enabled, fillway, url, opacity, blur}
     let bgOverlayObserver = null;    // mutation watchdog used for self-heal

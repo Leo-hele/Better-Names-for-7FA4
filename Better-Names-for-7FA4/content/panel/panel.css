@@ -4204,7 +4204,7 @@
 #bn-user-menu {
     position: fixed;
     /* Right-click context menu: must stay above the full-viewport background overlay
-       layer (now pinned at 2147483646, just below the extension top-level UI). */
+       layer (2147483645) and floating plan tools (2147483646). */
     z-index: 2147483647;
     background-color: var(--bn-bg, #fff);
     background-image: linear-gradient(to left, rgba(124, 191, 255, 0.15), rgba(124, 191, 255, 0));
