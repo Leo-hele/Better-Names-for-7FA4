@@ -498,33 +498,147 @@
         requestAnimationFrame(callback);
     }
 
-    function applyBackgroundOverlay(enabled, fillway, url, opacity, blurPx) {
+    // --- Background overlay layer ------------------------------------------------
+    // The overlay is a fixed, full-viewport, pointer-transparent layer that paints the
+    // configured background image above page content but below the extension's own
+    // top-level UI (#bn-container and friends use 2147483647). Site chrome (top nav /
+    // "学习" sidebar) can be created and re-layered asynchronously; a fixed z-index of
+    // 9999 left it buried under that chrome on some refresh orders. We pin the layer at
+    // 2147483645, below floating plan tools (2147483646) and top-level extension UI
+    // (2147483647), and self-heal it so it stays above page chrome when the page restacks.
+    const BN_BG_LAYER_ID = 'bn-background-image';
+    const BN_BG_LAYER_Z = '2147483645';
+
+    let bgOverlayState = null;       // latest applied background config {enabled, fillway, url, opacity, blur}
+    let bgOverlayObserver = null;    // mutation watchdog used for self-heal
+    let bgReassertTimer = null;      // debounce timer for reassert
+    let bgOverlayHooksRegistered = false;
+    let bgLastTargetBackground = null;    // last background shorthand string we applied
+    let bgLastAppliedBackground = null;   // canonical style.background read back after that write
+
+    function removeBackgroundLayer() {
+        const layer = document.getElementById(BN_BG_LAYER_ID);
+        if (layer) {
+            layer.remove();
+            debugLog('Background overlay removed');
+        }
+    }
+
+    function ensureBackgroundLayerCreated() {
+        let layer = document.getElementById(BN_BG_LAYER_ID);
+        if (!layer) {
+            layer = document.createElement('div');
+            layer.id = BN_BG_LAYER_ID;
+            document.body.appendChild(layer);
+            debugLog('Background overlay created');
+        } else if (layer.parentNode !== document.body) {
+            // A site script moved the layer into a nested stacking context; bring it
+            // back as a direct <body> child so its z-index is evaluated page-wide.
+            document.body.appendChild(layer);
+            debugLog('Background overlay re-attached to body');
+        }
+        return layer;
+    }
+
+    function applyBackgroundLayerStyle(layer, trimmedUrl, fillway, opacity, blurPx) {
+        const style = layer.style;
+        const targetOpacity = String(clampOpacity(opacity));
+        const targetBlur = clampBlur(blurPx);
+        const targetBackground = `url("${trimmedUrl}") ${backgroundStyles[fillway]}`;
+        const targetFilter = targetBlur > 0 ? `blur(${targetBlur}px)` : 'none';
+        // Only write when the value deviates; keeps the watchdog cheap and avoids
+        // pointless style invalidations on routine DOM churn. The background is
+        // compared against the canonical value read back after our last write:
+        // browsers re-serialize the shorthand (e.g. spacing around "center / cover"),
+        // so a direct string comparison would never match and would rewrite each pass.
+        if (style.position !== 'fixed') style.position = 'fixed';
+        if (style.top !== '0') style.top = '0';
+        if (style.left !== '0') style.left = '0';
+        if (style.width !== '100%') style.width = '100%';
+        if (style.height !== '100%') style.height = '100%';
+        if (style.zIndex !== BN_BG_LAYER_Z) style.zIndex = BN_BG_LAYER_Z;
+        if (style.pointerEvents !== 'none') style.pointerEvents = 'none';
+        if (style.opacity !== targetOpacity) style.opacity = targetOpacity;
+        if (style.filter !== targetFilter) style.filter = targetFilter;
+        if (bgLastTargetBackground !== targetBackground || style.background !== bgLastAppliedBackground) {
+            style.background = targetBackground;
+            bgLastTargetBackground = targetBackground;
+            bgLastAppliedBackground = style.background;
+        }
+    }
+
+    function syncBackgroundOverlay() {
+        const state = bgOverlayState;
+        const trimmedUrl = state && typeof state.url === 'string' ? state.url.trim() : '';
+        if (!state || !state.enabled || !trimmedUrl) {
+            // Feature off / no source: drop the layer and stop watching.
+            removeBackgroundLayer();
+            stopBackgroundWatchdog();
+            return;
+        }
+        startBackgroundWatchdog();
         ensureBody(() => {
-            let layer = document.getElementById('bn-background-image');
-            const trimmedUrl = typeof url === 'string' ? url.trim() : '';
-            if (!enabled || !trimmedUrl) {
-                if (layer) layer.remove();
-                return;
-            }
-            if (!layer) {
-                layer = document.createElement('div');
-                layer.id = 'bn-background-image';
-                Object.assign(layer.style, {
-                    position: 'fixed',
-                    top: '0',
-                    left: '0',
-                    width: '100%',
-                    height: '100%',
-                    zIndex: '9999',
-                    pointerEvents: 'none',
-                });
-                document.body.insertAdjacentElement('afterbegin', layer);
-            }
-            layer.style.opacity = String(clampOpacity(opacity));
-            const blurValue = clampBlur(blurPx);
-            layer.style.filter = blurValue > 0 ? `blur(${blurValue}px)` : 'none';
-            layer.style.background = `url("${trimmedUrl}") ${backgroundStyles[fillway]}`;
+            const layer = ensureBackgroundLayerCreated();
+            applyBackgroundLayerStyle(layer, trimmedUrl, state.fillway, state.opacity, state.blur);
         });
+    }
+
+    function scheduleBackgroundReassert() {
+        if (bgReassertTimer) return;
+        bgReassertTimer = setTimeout(() => {
+            bgReassertTimer = null;
+            syncBackgroundOverlay();
+        }, 300);
+    }
+
+    function stopBackgroundWatchdog() {
+        if (bgOverlayObserver) {
+            bgOverlayObserver.disconnect();
+            bgOverlayObserver = null;
+        }
+        if (bgReassertTimer) {
+            clearTimeout(bgReassertTimer);
+            bgReassertTimer = null;
+        }
+    }
+
+    function startBackgroundWatchdog() {
+        if (!bgOverlayState || !bgOverlayState.enabled) return;
+        registerBackgroundOverlayHooks();
+        ensureBody(() => {
+            if (bgOverlayObserver) return;
+            try {
+                bgOverlayObserver = new MutationObserver(() => scheduleBackgroundReassert());
+                // Watch the document root rather than <body>: if a site script ever
+                // replaces the whole <body> element, an observer attached to the old
+                // node would die with it and self-heal would silently stop.
+                bgOverlayObserver.observe(document.documentElement || document.body, {childList: true, subtree: true});
+            } catch (error) {
+                bgOverlayObserver = null;
+                debugLog('Background overlay watchdog failed to start', error);
+            }
+        });
+    }
+
+    function registerBackgroundOverlayHooks() {
+        if (bgOverlayHooksRegistered) return;
+        bgOverlayHooksRegistered = true;
+        // Re-assert after the full page load and again on bfcache restores so a late
+        // re-layout of site chrome can never leave the overlay buried.
+        window.addEventListener('load', scheduleBackgroundReassert);
+        window.addEventListener('pageshow', scheduleBackgroundReassert);
+    }
+
+    function applyBackgroundOverlay(enabled, fillway, url, opacity, blurPx) {
+        const trimmedUrl = typeof url === 'string' ? url.trim() : '';
+        bgOverlayState = {
+            enabled: !!enabled && !!trimmedUrl,
+            fillway,
+            url: trimmedUrl,
+            opacity,
+            blur: blurPx,
+        };
+        ensureBody(syncBackgroundOverlay);
     }
 
     const normalizedBgData = typeof storedBgImageData === 'string' ? storedBgImageData.trim() : '';

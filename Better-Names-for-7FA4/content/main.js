@@ -875,8 +875,9 @@ window.getCurrentUserId = getCurrentUserId;
       </div>`;
         document.body.appendChild(bar);
 
+        // Keep plan tools above the background (2147483645) and below top-level UI (2147483647).
         GM_addStyle(`
-      #plan-bar{position:fixed;right:16px;bottom:120px;z-index:9999;background:#fff;border:1px solid #ddd;border-radius:10px;padding:10px 12px;box-shadow:0 8px 24px rgba(0,0,0,.12);max-width:calc(100vw - 32px);}
+      #plan-bar{position:fixed;right:16px;bottom:120px;z-index:2147483646;background:#fff;border:1px solid #ddd;border-radius:10px;padding:10px 12px;box-shadow:0 8px 24px rgba(0,0,0,.12);max-width:calc(100vw - 32px);}
       #plan-bar .padder{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;white-space:nowrap;}
       #plan-bar .padder>*{flex:0 0 auto;}
       #pad-handle{cursor:move;opacity:.7}
@@ -884,7 +885,7 @@ window.getCurrentUserId = getCurrentUserId;
       .padder-selected{background:rgba(0,150,255,.06)!important;transition:background-color .24s ease;}
       .padder-animate{animation:padder-pulse .45s ease;}
       @keyframes padder-pulse{0%{box-shadow:0 0 0 0 rgba(0,150,255,0);transform:scale(1);}40%{box-shadow:0 0 0 6px rgba(0,150,255,.18);transform:scale(1.01);}100%{box-shadow:0 0 0 0 rgba(0,150,255,0);transform:scale(1);}}
-      #plan-preview{position:fixed;top:72px;right:16px;z-index:9999;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px 14px;box-shadow:0 10px 30px rgba(15,23,42,.12);width:320px;max-height:65vh;overflow:auto;font-size:13px;line-height:1.45;cursor:default;}
+      #plan-preview{position:fixed;top:72px;right:16px;z-index:2147483646;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px 14px;box-shadow:0 10px 30px rgba(15,23,42,.12);width:320px;max-height:65vh;overflow:auto;font-size:13px;line-height:1.45;cursor:default;}
       #plan-preview .plan-preview-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:2px;font-weight:600;color:#0f172a;cursor:default;user-select:none;}
       #plan-preview .plan-preview-date{font-size:12px;color:#475569;}
       #plan-preview .plan-preview-subtitle{font-size:12px;color:#94a3b8;margin-bottom:8px;}
