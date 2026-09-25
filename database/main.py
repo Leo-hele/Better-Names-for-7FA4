@@ -13,6 +13,7 @@ from user_db_crypto import (
     get_fernet_from_env,
     read_json,
     read_uid_keys,
+    read_users_db_as_plain,
 )
 
 BASE = "https://jx.7fa4.cn:8888"
@@ -109,6 +110,16 @@ def extract_name_from_user_plan(html: str) -> Optional[str]:
     m = re.search(r"\n-\s*([^\n<]+)", td.get_text("\n"))
     return m.group(1).strip() if m else None
 
+def normalize_colorkey(text: str) -> Optional[str]:
+    """榜单“毕业年份”列可能是“2032届/2032”，也可能是旧的年级文本（高三、小六…）。"""
+    if not text:
+        return None
+    txt = ALT_TEXT.get(text.strip(), text.strip())
+    m = re.search(r"(20\d{2})", txt)
+    if m:
+        return m.group(1)
+    return GRADE_TO_COLORKEY.get(txt)
+
 def extract_uid_and_colorkey_from_ranklist(html: str) -> Dict[int, str]:
     soup = BeautifulSoup(html, "lxml")
     result: Dict[int, str] = {}
@@ -123,9 +134,7 @@ def extract_uid_and_colorkey_from_ranklist(html: str) -> Dict[int, str]:
         td_grade = tr.select_one("td.graduate_year")
         if not td_grade:
             continue
-        txt = td_grade.get_text(strip=True)
-        txt = ALT_TEXT.get(txt, txt)
-        colorkey = GRADE_TO_COLORKEY.get(txt)
+        colorkey = normalize_colorkey(td_grade.get_text(strip=True))
         if colorkey:
             result[uid] = colorkey
     return result
@@ -231,12 +240,27 @@ async def crawl_colorkeys() -> Dict[int, str]:
                     print(f"[rank] {done}/{total}")
     return out
 
-def to_users_object(names: Dict[int, str], cols: Dict[int, str]) -> Dict[int, Dict[str, str]]:
+def load_existing_names() -> Dict[int, str]:
+    """读取现有数据库里的姓名：本次抓取不到姓名时沿用旧值，避免把已有姓名清空。"""
+    out: Dict[int, str] = {}
+    for key, info in read_users_db_as_plain(DATA_DIR / "users.json", require_key_for_encrypted=False).items():
+        try:
+            uid = int(key)
+        except (TypeError, ValueError):
+            continue
+        name = info.get("name") if isinstance(info, dict) else None
+        if isinstance(name, str) and name.strip():
+            out[uid] = name
+    return out
+
+def to_users_object(names: Dict[int, str], cols: Dict[int, str], existing_names: Optional[Dict[int, str]] = None) -> Dict[int, Dict[str, str]]:
     users: Dict[int, Dict[str, str]] = {}
     existing_max = load_existing_max_uid()
+    known_names = existing_names or {}
     max_uid = max([*names.keys(), *cols.keys(), existing_max, UID_START - 1])
     for uid in range(UID_START, max_uid + 1):
-        users[uid] = {"name": names.get(uid, ""), "colorKey": cols.get(uid, "uk")}
+        name = names.get(uid, "") or known_names.get(uid, "")
+        users[uid] = {"name": name, "colorKey": cols.get(uid, "uk")}
     return users
 
 def apply_special_colorkeys(users: Dict[int, Dict[str, str]]) -> None:
@@ -362,7 +386,8 @@ async def main():
     names = await crawl_names(initial_end)
     print(f"姓名抓取完成：{len(names)} 条。")
 
-    users = to_users_object(names, colorkeys)
+    existing_names = load_existing_names()
+    users = to_users_object(names, colorkeys, existing_names)
     special_rules = load_special_rules()
     apply_special_colorkeys(users)
     apply_configured_overrides(users, special_rules)

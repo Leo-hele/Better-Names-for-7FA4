@@ -4888,9 +4888,22 @@
         a.querySelectorAll('.bn-icon').forEach(el => el.remove());
         a.querySelectorAll('.bn-user-tags').forEach(el => el.remove());
 
+        // 只有毕业年份、没有姓名（例如新增但还没抓到姓名）时不改写页面上的用户名，
+        // 只套用颜色和悬浮提示，避免把原有昵称清空
+        const knownName = info && typeof info.name === 'string' ? info.name.trim() : '';
+        if (info && !knownName) {
+            if (info.colorKey === "clear") a.style.color = '';
+            else {
+                const c = palette[info.colorKey];
+                if (c) a.style.color = c;
+            }
+            renderUserTags(a, info.tags);
+            return;
+        }
+
         let combinedName = defaultSource;
         if (info) {
-            combinedName = typeof info.name === 'string' ? info.name : (defaultSource || '');
+            combinedName = knownName;
             if (showUserNickname && originalNickname && originalNickname !== combinedName) {
                 combinedName += `（${originalNickname}）`;
             }
