@@ -41,13 +41,21 @@ HEADERS = {
 if COOKIE_STR:
     HEADERS["Cookie"] = COOKIE_STR
 
-GRADE_TO_COLORKEY = {
-    "小四": "x4", "小五": "x5", "小六": "x6",
-    "初一": "c1", "初二": "c2", "初三": "c3",
-    "高一": "g1", "高二": "g2", "高三": "g3",
-    "大一": "d1", "大二": "d2", "大三": "d3", "大四": "d4",
-    "毕业": "by", "教练": "jl", "教师": "jl", "其他": "uk",
+# colorKey 使用“高中毕业年份（届）”
+# 当前学年的秋季年份；每年 9 月开学后 +1
+# 注意：若榜单上的年级还是上一学年的旧数据，这里要改回上一学年的秋季年份
+SCHOOL_YEAR_START = 2026
+# 各年级距离高中毕业的年份差
+YEARS_TO_GRADUATION = {
+    "小四": 9, "小五": 8, "小六": 7,
+    "初一": 6, "初二": 5, "初三": 4,
+    "高一": 3, "高二": 2, "高三": 1,
+    "大一": 0, "大二": -1, "大三": -2, "大四": -3,
 }
+GRADE_TO_COLORKEY = {
+    grade: str(SCHOOL_YEAR_START + offset) for grade, offset in YEARS_TO_GRADUATION.items()
+}
+GRADE_TO_COLORKEY.update({"毕业": "by", "教练": "jl", "教师": "jl", "其他": "uk"})
 ALT_TEXT = {"大  一": "大一", "大  二": "大二", "大  三": "大三", "大  四": "大四", "教  练": "教练", "其  他": "其他"}
 SPECIAL_JL_NAMES = {"陈许旻", "程宇轩", "钟胡天翔", "陈恒宇", "徐淑君", "徐苒茨", "王多灵", "李雪梅"}
 SPECIAL_UID_OVERRIDES = {
